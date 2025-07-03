@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.khoubyari.example.Application;
 import com.khoubyari.example.api.rest.HotelController;
 import com.khoubyari.example.domain.Hotel;
+import com.khoubyari.example.service.HotelService; // Added import
 
 import org.junit.Before;
 import org.junit.Test;
@@ -19,6 +20,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultMatcher;
@@ -37,6 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @RunWith(SpringJUnit4ClassRunner.class)
 @SpringBootTest(classes = Application.class)
 @ActiveProfiles("test")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 public class HotelControllerTest {
 
     private static final String RESOURCE_LOCATION_PATTERN = "http://localhost/example/v1/hotels/[0-9]+";
@@ -47,6 +50,9 @@ public class HotelControllerTest {
     @Autowired
     WebApplicationContext context;
 
+    @Autowired
+    private HotelService hotelService; // Autowire HotelService for test setup
+
     private MockMvc mvc;
 
     @Before
@@ -55,12 +61,12 @@ public class HotelControllerTest {
         mvc = MockMvcBuilders.webAppContextSetup(context).build();
     }
 
-    //@Test
+    @Test
     public void shouldHaveEmptyDB() throws Exception {
         mvc.perform(get("/example/v1/hotels")
                 .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(0)));
+                .andExpect(jsonPath("$.content", hasSize(0)));
     }
 
     @Test
@@ -145,6 +151,50 @@ JSONAssert.assertEquals(
         //DELETE
         mvc.perform(delete("/example/v1/hotels/" + id))
                 .andExpect(status().isNoContent());
+    }
+
+    @Test
+    public void shouldFailToCreateHotelWithInvalidData() throws Exception {
+        Hotel r1 = mockHotel("shouldFailToCreateHotelWithInvalidData");
+        r1.setName(null); // Invalid data
+        byte[] r1Json = toJson(r1);
+
+        mvc.perform(post("/example/v1/hotels")
+                .content(r1Json)
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.cause.message", containsString("DataFormatException: name")));
+    }
+
+    @Test
+    public void shouldGetAllHotelsWithPagination() throws Exception {
+        // Create a few hotels to test pagination
+        Hotel h1 = hotelService.createHotel(mockHotel("PageHotel1"));
+        Hotel h2 = hotelService.createHotel(mockHotel("PageHotel2"));
+        Hotel h3 = hotelService.createHotel(mockHotel("PageHotel3"));
+
+        // Test first page, size 2
+        mvc.perform(get("/example/v1/hotels")
+                .param("page", "0")
+                .param("size", "2")
+                .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(2)))
+                .andExpect(jsonPath("$.totalElements", is(3)))
+                .andExpect(jsonPath("$.number", is(0)))
+                .andExpect(jsonPath("$.totalPages", is(2)));
+
+        // Test second page, size 2
+        mvc.perform(get("/example/v1/hotels")
+                .param("page", "1")
+                .param("size", "2")
+                .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1))) // Remaining element
+                .andExpect(jsonPath("$.totalElements", is(3)))
+                .andExpect(jsonPath("$.number", is(1)))
+                .andExpect(jsonPath("$.totalPages", is(2)));
     }
 
 

@@ -23,4 +23,13 @@ public class ServiceProperties {
 		this.name = name;
 	}
 
+    private boolean healthy = true; // Default to true
+
+    public boolean isHealthy() {
+        return healthy;
+    }
+
+    public void setHealthy(boolean healthy) {
+        this.healthy = healthy;
+    }
 }
